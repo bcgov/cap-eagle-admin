@@ -1,8 +1,13 @@
 import { Component, OnInit, ChangeDetectorRef, OnDestroy } from '@angular/core';
-import { DialogService } from 'ng2-bootstrap-modal';
 import { Router, ActivatedRoute } from '@angular/router';
+import { MatSnackBar } from '@angular/material';
+
+import { DialogService } from 'ng2-bootstrap-modal';
 import { Subject, forkJoin } from 'rxjs';
-import {MatSnackBar } from '@angular/material';
+
+import * as moment from 'moment';
+import * as _ from 'lodash';
+
 import { Document } from 'app/models/document';
 import { SearchTerms } from 'app/models/search';
 
@@ -20,16 +25,52 @@ import { TableTemplateUtils } from 'app/shared/utils/table-template-utils';
 
 import { Utils } from 'app/shared/utils/utils';
 
+class DocumentFilterObject {
+  constructor(
+    public milestone: Array<string> = [],
+    public datePostedStart: object = {},
+    public datePostedEnd: object = {},
+    public type: Array<string> = [],
+    public documentAuthorType: Array<string> = []
+  ) {}
+}
+
 @Component({
   selector: 'app-project-documents',
   templateUrl: './project-documents.component.html',
   styleUrls: ['./project-documents.component.scss']
 })
 export class ProjectDocumentsComponent implements OnInit, OnDestroy {
-  public terms = new SearchTerms();
-  private ngUnsubscribe: Subject<boolean> = new Subject<boolean>();
   public documents: Document[] = null;
+  public milestones: any[] = [];
+  public authors: any[] = [];
+  public types: any[] = [];
+
   public loading = true;
+
+  public tableParams: TableParamsObject = new TableParamsObject();
+  public terms = new SearchTerms();
+
+  public filterForURL: object = {};
+  public filterForAPI: object = {};
+
+  public filterForUI: DocumentFilterObject = new DocumentFilterObject();
+
+  public showAdvancedSearch = true;
+
+  public showFilters: object = {
+    milestone: false,
+    date: false,
+    documentAuthorType: false,
+    type: false
+  };
+
+  public numFilters: object = {
+    milestone: 0,
+    date: 0,
+    documentAuthorType: 0,
+    type: 0
+  };
 
   public documentTableData: TableObject;
   public documentTableColumns: any[] = [
@@ -66,13 +107,12 @@ export class ProjectDocumentsComponent implements OnInit, OnDestroy {
     }
   ];
 
-  public selectedCount = 0;
+  private ngUnsubscribe: Subject<boolean> = new Subject<boolean>();
 
+  public selectedCount = 0;
   public currentProject;
   public canPublish;
   public canUnpublish;
-
-  public tableParams: TableParamsObject = new TableParamsObject();
 
   constructor(
     private _changeDetectionRef: ChangeDetectorRef,
@@ -86,39 +126,109 @@ export class ProjectDocumentsComponent implements OnInit, OnDestroy {
     private storageService: StorageService,
     private tableTemplateUtils: TableTemplateUtils,
     private utils: Utils
-  ) { }
+  ) {}
 
   ngOnInit() {
-    if (this.storageService.state.projectDocumentTableParams == null) {
-      this.route.params
-        .takeUntil(this.ngUnsubscribe)
-        .subscribe(params => {
-          this.tableParams = this.tableTemplateUtils.getParamsFromUrl(params);
+    // Fetch the Lists
+    this.searchService
+      .getFullList('List')
+      .switchMap((res: any) => {
+        if (res.length > 0) {
+          res[0].searchResults.map(item => {
+            switch (item.type) {
+              case 'label':
+                this.milestones.push({ ...item });
+                break;
+              case 'author':
+                this.authors.push({ ...item });
+                break;
+              case 'doctype':
+                this.types.push({ ...item });
+                break;
+              default:
+                break;
+            }
+          });
+        }
+
+        // This code reorders the document type list defined by EAO (See Jira Ticket EAGLE-88)
+        let copy_doctype = this.types;
+        this.types = [];
+        // This order was created by mapping the doctype items from the database with the EAO defined ordered list
+        let docList_order = [
+          0,
+          1,
+          2,
+          6,
+          10,
+          11,
+          14,
+          4,
+          3,
+          5,
+          13,
+          16,
+          15,
+          17,
+          18,
+          19,
+          7,
+          8,
+          9,
+          12
+        ];
+        // We map the doctypes to put in the correct order as defined in doclist_order
+        docList_order.map((item, i) => {
+          this.types[item] = copy_doctype[i];
+        });
+
+        return this.route.params;
+      })
+      .switchMap((res: any) => {
+        let params = { ...res };
+
+        this.setFiltersFromParams(params);
+
+        this.updateCounts();
+
+        if (this.storageService.state.projectDocumentTableParams == null) {
+          this.tableParams = this.tableTemplateUtils.getParamsFromUrl(
+            params,
+            this.filterForURL
+          );
           if (this.tableParams.sortBy === '') {
             this.tableParams.sortBy = '-datePosted';
           }
           if (params.keywords !== undefined) {
-            this.tableParams.keywords = decodeURIComponent(params.keywords) || '';
+            this.tableParams.keywords =
+              decodeURIComponent(params.keywords) || '';
           } else {
             this.tableParams.keywords = '';
           }
           this.storageService.state.projectDocumentTableParams = this.tableParams;
           this._changeDetectionRef.detectChanges();
-        });
-    } else {
-      this.tableParams = this.storageService.state.projectDocumentTableParams;
-      this.tableParams.keywords = decodeURIComponent(this.tableParams.keywords);
-    }
-    this.currentProject = this.storageService.state.currentProject.data;
-    this.storageService.state.labels = null;
-    this._changeDetectionRef.detectChanges();
+        } else {
+          this.tableParams = this.storageService.state.projectDocumentTableParams;
+          this.tableParams.keywords = decodeURIComponent(
+            this.tableParams.keywords
+          );
+        }
 
-    this.route.data
+        this.currentProject = this.storageService.state.currentProject.data;
+        this.storageService.state.labels = null;
+        this._changeDetectionRef.detectChanges();
+
+        return this.route.data;
+      })
       .takeUntil(this.ngUnsubscribe)
       .subscribe((res: any) => {
         if (res) {
-          if (res.documents[0].data.meta && res.documents[0].data.meta.length > 0) {
-            this.tableParams.totalListItems = res.documents[0].data.meta[0].searchResultsTotal;
+          if (
+            res.documents[0].data.meta &&
+            res.documents[0].data.meta.length > 0
+          ) {
+            this.tableParams.totalListItems =
+              res.documents[0].data.meta[0].searchResultsTotal;
             this.documents = res.documents[0].data.searchResults;
           } else {
             this.tableParams.totalListItems = 0;
@@ -136,7 +246,11 @@ export class ProjectDocumentsComponent implements OnInit, OnDestroy {
   }
 
   public openSnackBar(message: string, action: string) {
-    this.snackBar.open(message, action, {verticalPosition: 'top', horizontalPosition: 'center', duration: 4000});
+    this.snackBar.open(message, action, {
+      verticalPosition: 'top',
+      horizontalPosition: 'center',
+      duration: 4000
+    });
   }
   public selectAction(action) {
     let promises = [];
@@ -144,36 +258,46 @@ export class ProjectDocumentsComponent implements OnInit, OnDestroy {
     // select all documents
     switch (action) {
       case 'copyLink':
-        this.documentTableData.data.map((item) => {
+        this.documentTableData.data.map(item => {
           if (item.checkbox === true) {
             let selBox = document.createElement('textarea');
             selBox.style.position = 'fixed';
             selBox.style.left = '0';
             selBox.style.top = '0';
             selBox.style.opacity = '0';
-            const safeName = this.utils.encodeFilename(item.documentFileName, true);
-            selBox.value = window.location.origin + `/api/document/${item._id}/fetch/${safeName}`;
+            const safeName = this.utils.encodeFilename(
+              item.documentFileName,
+              true
+            );
+            selBox.value =
+              window.location.origin +
+              `/api/document/${item._id}/fetch/${safeName}`;
             document.body.appendChild(selBox);
             selBox.focus();
             selBox.select();
             document.execCommand('copy');
             document.body.removeChild(selBox);
-            this.openSnackBar('A  PUBLIC  link to this document has been copied.', 'Close');
+            this.openSnackBar(
+              'A  PUBLIC  link to this document has been copied.',
+              'Close'
+            );
           }
         });
         break;
       case 'selectAll':
         let someSelected = false;
-        this.documentTableData.data.map((item) => {
+        this.documentTableData.data.map(item => {
           if (item.checkbox === true) {
             someSelected = true;
           }
         });
-        this.documentTableData.data.map((item) => {
+        this.documentTableData.data.map(item => {
           item.checkbox = !someSelected;
         });
 
-        this.selectedCount = someSelected ? 0 : this.documentTableData.data.length;
+        this.selectedCount = someSelected
+          ? 0
+          : this.documentTableData.data.length;
 
         this.setPublishUnpublish();
 
@@ -181,9 +305,11 @@ export class ProjectDocumentsComponent implements OnInit, OnDestroy {
         break;
       case 'edit':
         let selectedDocs = [];
-        this.documentTableData.data.map((item) => {
+        this.documentTableData.data.map(item => {
           if (item.checkbox === true) {
-            selectedDocs.push(this.documents.filter(d => d._id === item._id)[0]);
+            selectedDocs.push(
+              this.documents.filter(d => d._id === item._id)[0]
+            );
           }
         });
         // Store and send to the edit page.
@@ -192,15 +318,24 @@ export class ProjectDocumentsComponent implements OnInit, OnDestroy {
         if (selectedDocs.length === 1) {
           this.storageService.state.labels = selectedDocs[0].labels;
         }
-        this.router.navigate(['p', this.currentProject._id, 'project-documents', 'edit']);
+        this.router.navigate([
+          'p',
+          this.currentProject._id,
+          'project-documents',
+          'edit'
+        ]);
         break;
       case 'delete':
         this.deleteDocument();
         break;
       case 'download':
-        this.documentTableData.data.map((item) => {
+        this.documentTableData.data.map(item => {
           if (item.checkbox === true) {
-            promises.push(this.api.downloadDocument(this.documents.filter(d => d._id === item._id)[0]));
+            promises.push(
+              this.api.downloadDocument(
+                this.documents.filter(d => d._id === item._id)[0]
+              )
+            );
           }
         });
         return Promise.all(promises).then(() => {
@@ -221,112 +356,122 @@ export class ProjectDocumentsComponent implements OnInit, OnDestroy {
   }
 
   publishDocument() {
-    this.dialogService.addDialog(ConfirmComponent,
-      {
-        title: 'Publish Document(s)',
-        message: 'Click <strong>OK</strong> to publish the selected Documents or <strong>Cancel</strong> to return to the list.'
-      }, {
-        backdropColor: 'rgba(0, 0, 0, 0.5)'
-      })
-      .takeUntil(this.ngUnsubscribe)
-      .subscribe(
-        isConfirmed => {
-          if (isConfirmed) {
-            this.loading = true;
-            let observables = [];
-            this.documentTableData.data.map(item => {
-              if (item.checkbox && !item.read.includes('public')) {
-                observables.push(this.documentService.publish(item._id));
-              }
-            });
-            forkJoin(observables)
-              .subscribe(
-                res => { },
-                err => {
-                  console.log('Error:', err);
-                },
-                () => {
-                  this.loading = false;
-                  this.canUnpublish = false;
-                  this.canPublish = false;
-                  this.onSubmit();
-                }
-              );
-          } else {
-            this.loading = false;
-          }
+    this.dialogService
+      .addDialog(
+        ConfirmComponent,
+        {
+          title: 'Publish Document(s)',
+          message:
+            'Click <strong>OK</strong> to publish the selected Documents or <strong>Cancel</strong> to return to the list.'
+        },
+        {
+          backdropColor: 'rgba(0, 0, 0, 0.5)'
         }
-      );
+      )
+      .takeUntil(this.ngUnsubscribe)
+      .subscribe(isConfirmed => {
+        if (isConfirmed) {
+          this.loading = true;
+          let observables = [];
+          this.documentTableData.data.map(item => {
+            if (item.checkbox && !item.read.includes('public')) {
+              observables.push(this.documentService.publish(item._id));
+            }
+          });
+          forkJoin(observables).subscribe(
+            res => {},
+            err => {
+              console.log('Error:', err);
+            },
+            () => {
+              this.loading = false;
+              this.canUnpublish = false;
+              this.canPublish = false;
+              this.onSubmit();
+            }
+          );
+        } else {
+          this.loading = false;
+        }
+      });
   }
 
   unpublishDocument() {
-    this.dialogService.addDialog(ConfirmComponent,
-      {
-        title: 'Unpublish Document(s)',
-        message: 'Click <strong>OK</strong> to unpublish the selected Documents or <strong>Cancel</strong> to return to the list.'
-      }, {
-        backdropColor: 'rgba(0, 0, 0, 0.5)'
-      })
-      .takeUntil(this.ngUnsubscribe)
-      .subscribe(
-        isConfirmed => {
-          if (isConfirmed) {
-            this.loading = true;
-            let observables = [];
-            this.documentTableData.data.map(item => {
-              if (item.checkbox && item.read.includes('public')) {
-                observables.push(this.documentService.unPublish(item._id));
-              }
-            });
-            forkJoin(observables)
-              .subscribe(
-                res => { },
-                err => {
-                  console.log('Error:', err);
-                },
-                () => {
-                  this.loading = false;
-                  this.canUnpublish = false;
-                  this.canPublish = false;
-                  this.onSubmit();
-                }
-              );
-          } else {
-            this.loading = false;
-          }
+    this.dialogService
+      .addDialog(
+        ConfirmComponent,
+        {
+          title: 'Unpublish Document(s)',
+          message:
+            'Click <strong>OK</strong> to unpublish the selected Documents or <strong>Cancel</strong> to return to the list.'
+        },
+        {
+          backdropColor: 'rgba(0, 0, 0, 0.5)'
         }
-      );
+      )
+      .takeUntil(this.ngUnsubscribe)
+      .subscribe(isConfirmed => {
+        if (isConfirmed) {
+          this.loading = true;
+          let observables = [];
+          this.documentTableData.data.map(item => {
+            if (item.checkbox && item.read.includes('public')) {
+              observables.push(this.documentService.unPublish(item._id));
+            }
+          });
+          forkJoin(observables).subscribe(
+            res => {},
+            err => {
+              console.log('Error:', err);
+            },
+            () => {
+              this.loading = false;
+              this.canUnpublish = false;
+              this.canPublish = false;
+              this.onSubmit();
+            }
+          );
+        } else {
+          this.loading = false;
+        }
+      });
   }
 
   deleteDocument() {
-    this.dialogService.addDialog(ConfirmComponent,
-      {
-        title: 'Delete Document',
-        message: 'Click <strong>OK</strong> to delete this Document or <strong>Cancel</strong> to return to the list.'
-      }, {
-        backdropColor: 'rgba(0, 0, 0, 0.5)'
-      })
-      .takeUntil(this.ngUnsubscribe)
-      .subscribe(
-        isConfirmed => {
-          if (isConfirmed) {
-            this.loading = true;
-            // Delete the Document(s)
-            let itemsToDelete = [];
-            this.documentTableData.data.map((item) => {
-              if (item.checkbox === true) {
-                itemsToDelete.push({ promise: this.documentService.delete(item).toPromise(), item: item });
-              }
-            });
-            this.loading = false;
-            return Promise.all(itemsToDelete).then(() => {
-              // Reload main page.
-              this.onSubmit();
-            });
-          }
-          this.loading = false;
+    this.dialogService
+      .addDialog(
+        ConfirmComponent,
+        {
+          title: 'Delete Document',
+          message:
+            'Click <strong>OK</strong> to delete this Document or <strong>Cancel</strong> to return to the list.'
+        },
+        {
+          backdropColor: 'rgba(0, 0, 0, 0.5)'
         }
-      );
+      )
+      .takeUntil(this.ngUnsubscribe)
+      .subscribe(isConfirmed => {
+        if (isConfirmed) {
+          this.loading = true;
+          // Delete the Document(s)
+          let itemsToDelete = [];
+          this.documentTableData.data.map(item => {
+            if (item.checkbox === true) {
+              itemsToDelete.push({
+                promise: this.documentService.delete(item).toPromise(),
+                item: item
+              });
+            }
+          });
+          this.loading = false;
+          return Promise.all(itemsToDelete).then(() => {
+            // Reload main page.
+            this.onSubmit();
+          });
+        }
+        this.loading = false;
+      });
   }
 
   public onNumItems(numItems) {
@@ -343,12 +488,21 @@ export class ProjectDocumentsComponent implements OnInit, OnDestroy {
     params['currentPage'] = this.tableParams.currentPage = 1;
     params['sortBy'] = this.tableParams.sortBy;
     params['keywords'] = this.tableParams.keywords;
-    numItems === 'max' ? params['pageSize'] = this.tableParams.pageSize = this.tableParams.totalListItems : params['pageSize'] = this.tableParams.pageSize = numItems;
+    numItems === 'max'
+      ? (params[
+          'pageSize'
+        ] = this.tableParams.pageSize = this.tableParams.totalListItems)
+      : (params['pageSize'] = this.tableParams.pageSize = numItems);
 
-    this.router.navigate(['p', this.currentProject._id, 'project-documents', params]);
+    this.router.navigate([
+      'p',
+      this.currentProject._id,
+      'project-documents',
+      params
+    ]);
   }
 
-  public onSubmit() {
+  public onSubmit(currentPage = 1) {
     // dismiss any open snackbar
     // if (this.snackBarRef) { this.snackBarRef.dismiss(); }
 
@@ -356,34 +510,45 @@ export class ProjectDocumentsComponent implements OnInit, OnDestroy {
     // REF: https://stackoverflow.com/questions/40983055/how-to-reload-the-current-route-with-the-angular-2-router
     // WORKAROUND: add timestamp to force URL to be different than last time
 
+    this.loading = true;
+
     const params = this.terms.getParams();
     params['ms'] = new Date().getMilliseconds();
     params['dataset'] = this.terms.dataset;
-    params['currentPage'] = this.tableParams.currentPage = 1;
+    params['currentPage'] = this.tableParams.currentPage;
     params['sortBy'] = this.tableParams.sortBy = '-datePosted';
-    params['keywords'] = this.utils.encodeParams(this.tableParams.keywords = this.tableParams.keywords || '');
-    params['pageSize'] = this.tableParams.pageSize = 10;
+    params['keywords'] = this.utils.encodeParams(
+      (this.tableParams.keywords = this.tableParams.keywords || '')
+    );
+    params['pageSize'] = this.tableParams.pageSize;
 
-    this.router.navigate(['p', this.currentProject._id, 'project-documents', params]);
+    this.setParamsFromFilters(params);
+
+    this.router.navigate([
+      'p',
+      this.currentProject._id,
+      'project-documents',
+      params
+    ]);
   }
 
   setRowData() {
     let documentList = [];
     if (this.documents && this.documents.length > 0) {
       this.documents.forEach(document => {
-        documentList.push(
-          {
-            displayName: document.displayName,
-            documentFileName: document.documentFileName,
-            datePosted: document.datePosted,
-            status: document.read.includes('public') ? 'Published' : 'Not Published',
-            type: document.type,
-            milestone: document.milestone,
-            _id: document._id,
-            project: document.project,
-            read: document.read
-          }
-        );
+        documentList.push({
+          displayName: document.displayName,
+          documentFileName: document.documentFileName,
+          datePosted: document.datePosted,
+          status: document.read.includes('public')
+            ? 'Published'
+            : 'Not Published',
+          type: document.type,
+          milestone: document.milestone,
+          _id: document._id,
+          project: document.project,
+          read: document.read
+        });
       });
       this.documentTableData = new TableObject(
         DocumentTableRowsComponent,
@@ -442,27 +607,189 @@ export class ProjectDocumentsComponent implements OnInit, OnDestroy {
     }
   }
 
+  paramsToCollectionFilters(params, name, collection, identifyBy) {
+    this.filterForUI[name] = [];
+    delete this.filterForURL[name];
+    delete this.filterForAPI[name];
+
+    if (params[name] && collection) {
+      let confirmedValues = [];
+      // look up each value in collection
+      const values = params[name].split(',');
+      values.forEach(value => {
+        const record = _.find(collection, [identifyBy, value]);
+        if (record) {
+          this.filterForUI[name].push(record);
+          confirmedValues.push(value);
+        }
+      });
+      if (confirmedValues.length) {
+        this.filterForURL[name] = confirmedValues.join(',');
+        this.filterForAPI[name] = confirmedValues.join(',');
+      }
+    }
+  }
+
+  paramsToDateFilters(params, name) {
+    this.filterForUI[name] = null;
+    delete this.filterForURL[name];
+    delete this.filterForAPI[name];
+
+    if (params[name]) {
+      this.filterForURL[name] = params[name];
+      this.filterForAPI[name] = params[name];
+      // NGB Date
+      const date = moment(params[name]).toDate();
+      this.filterForUI[name] = {
+        year: date.getFullYear(),
+        month: date.getMonth() + 1,
+        day: date.getDate()
+      };
+    }
+  }
+
+  setFiltersFromParams(params) {
+    this.paramsToCollectionFilters(params, 'milestone', this.milestones, '_id');
+    this.paramsToCollectionFilters(
+      params,
+      'documentAuthorType',
+      this.authors,
+      '_id'
+    );
+    this.paramsToCollectionFilters(params, 'type', this.types, '_id');
+
+    this.paramsToDateFilters(params, 'datePostedStart');
+    this.paramsToDateFilters(params, 'datePostedEnd');
+  }
+
+  collectionFilterToParams(params, name, identifyBy) {
+    if (this.filterForUI[name].length) {
+      const values = this.filterForUI[name].map(record => {
+        return record[identifyBy];
+      });
+      params[name] = values.join(',');
+    }
+  }
+
+  isNGBDate(date) {
+    return date && date.year && date.month && date.day;
+  }
+
+  dateFilterToParams(params, name) {
+    if (this.isNGBDate(this.filterForUI[name])) {
+      const date = new Date(
+        this.filterForUI[name].year,
+        this.filterForUI[name].month - 1,
+        this.filterForUI[name].day
+      );
+      params[name] = moment(date).format('YYYY-MM-DD');
+    }
+  }
+
+  setParamsFromFilters(params) {
+    this.collectionFilterToParams(params, 'milestone', '_id');
+    this.collectionFilterToParams(params, 'documentAuthorType', '_id');
+    this.collectionFilterToParams(params, 'type', '_id');
+
+    this.dateFilterToParams(params, 'datePostedStart');
+    this.dateFilterToParams(params, 'datePostedEnd');
+  }
+
+  toggleFilter(name) {
+    if (this.showFilters[name]) {
+      this.updateCount(name);
+      this.showFilters[name] = false;
+    } else {
+      Object.keys(this.showFilters).forEach(key => {
+        if (this.showFilters[key]) {
+          this.updateCount(key);
+          this.showFilters[key] = false;
+        }
+      });
+      this.showFilters[name] = true;
+    }
+  }
+
+  isShowingFilter() {
+    return Object.keys(this.showFilters).some(key => {
+      return this.showFilters[key];
+    });
+  }
+
+  clearAll() {
+    Object.keys(this.filterForUI).forEach(key => {
+      if (this.filterForUI[key]) {
+        if (Array.isArray(this.filterForUI[key])) {
+          this.filterForUI[key] = [];
+        } else if (typeof this.filterForUI[key] === 'object') {
+          this.filterForUI[key] = {};
+        } else {
+          this.filterForUI[key] = '';
+        }
+      }
+    });
+    this.updateCounts();
+  }
+
+  updateCount(name) {
+    const getCount = n => {
+      return Object.keys(this.filterForUI[n]).filter(
+        k => this.filterForUI[n][k]
+      ).length;
+    };
+
+    let num = 0;
+    if (name === 'date') {
+      num += this.isNGBDate(this.filterForUI.datePostedStart) ? 1 : 0;
+      num += this.isNGBDate(this.filterForUI.datePostedEnd) ? 1 : 0;
+    } else {
+      num = getCount(name);
+    }
+    this.numFilters[name] = num;
+  }
+
+  updateCounts() {
+    this.updateCount('milestone');
+    this.updateCount('date');
+    this.updateCount('documentAuthorType');
+    this.updateCount('type');
+  }
+
   getPaginatedDocs(pageNumber) {
     // Go to top of page after clicking to a different page.
     window.scrollTo(0, 0);
     this.loading = true;
 
-    this.tableParams = this.tableTemplateUtils.updateTableParams(this.tableParams, pageNumber, this.tableParams.sortBy);
-
-    this.searchService.getSearchResults(
-      this.tableParams.keywords || '',
-      'Document',
-      [{ 'name': 'project', 'value': this.currentProject._id }],
+    this.tableParams = this.tableTemplateUtils.updateTableParams(
+      this.tableParams,
       pageNumber,
-      this.tableParams.pageSize,
-      this.tableParams.sortBy,
-      { documentSource: 'PROJECT' },
-      true)
+      this.tableParams.sortBy
+    );
+
+    this.searchService
+      .getSearchResults(
+        this.tableParams.keywords || '',
+        'Document',
+        [{ name: 'project', value: this.currentProject._id }],
+        pageNumber,
+        this.tableParams.pageSize,
+        this.tableParams.sortBy,
+        { documentSource: 'PROJECT' },
+        true,
+        this.filterForAPI
+      )
       .takeUntil(this.ngUnsubscribe)
       .subscribe((res: any) => {
-        this.tableParams.totalListItems = res[0].data.meta[0].searchResultsTotal;
+        this.tableParams.totalListItems =
+          res[0].data.meta[0].searchResultsTotal;
         this.documents = res[0].data.searchResults;
-        this.tableTemplateUtils.updateUrl(this.tableParams.sortBy, this.tableParams.currentPage, this.tableParams.pageSize, null, this.tableParams.keywords || '');
+        this.tableTemplateUtils.updateUrl(
+          this.tableParams.sortBy,
+          this.tableParams.currentPage,
+          this.tableParams.pageSize,
+          this.filterForURL,
+          this.tableParams.keywords || ''
+        );
         this.setRowData();
         this.loading = false;
         this._changeDetectionRef.detectChanges();

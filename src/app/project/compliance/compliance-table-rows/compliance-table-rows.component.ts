@@ -3,6 +3,7 @@ import { Component, Input, Output, OnInit, EventEmitter } from '@angular/core';
 import { TableComponent } from 'app/shared/components/table-template/table.component';
 import { TableObject } from 'app/shared/components/table-template/table-object';
 import { Router } from '@angular/router';
+import { ApiService } from 'app/services/api';
 
 @Component({
   selector: 'tbody[app-compliance-table-rows]',
@@ -16,9 +17,11 @@ export class ComplianceTableRowsComponent implements OnInit, TableComponent {
 
   public items: any;
   public paginationData: any;
+  public loading = false;
 
   constructor(
-    private router: Router
+    private api: ApiService,
+    private router: Router,
   ) { }
 
   ngOnInit() {
@@ -38,7 +41,17 @@ export class ComplianceTableRowsComponent implements OnInit, TableComponent {
     this.selectedCount.emit(count);
   }
 
+  async downloadItem(item) {
+    this.loading = true;
+    try {
+      await this.api.downloadInspection(item);
+    } catch (err) {
+      console.log(err);
+    }
+    this.loading = false;
+  }
+
   goToItem(item) {
-    this.router.navigate(['p', item.project._id, 'compliance', 'detail', item._id]);
+    this.router.navigate(['p', item.project._id, 'compliance', 'i', item._id, 'inspection-details']);
   }
 }

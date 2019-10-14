@@ -1,0 +1,35 @@
+<tr
+  *ngFor="let item of items | paginate: { id: 'table-template-pagination', itemsPerPage: paginationData.pageSize, currentPage: paginationData.currentPage, totalItems: paginationData.totalListItems }">
+  <div class="spinner-container" *ngIf="loading">
+    <div class="spinner-new rotating"></div>
+  </div>
+  <td scope="row" class="col-2" data-label="Assets">
+    <div *ngIf="item.type === 'photo'">
+      <div *ngIf="item.src">
+        <img class="thumbnail" [src]="item.src" />
+      </div>
+      <div class="thumbnail" *ngIf="!item.src">
+        <div class="spinner-new rotating"></div>
+      </div>
+    </div>
+    <div *ngIf="item.type === 'video'">
+      <i class="material-icons">videocam</i>
+    </div>
+    <div *ngIf="item.type === 'voice'">
+      <i class="material-icons">mic</i>
+    </div>
+  </td>
+  <td scope="row" class="col-4" data-label="Caption">
+    <div [innerHTML]="item.caption" id="description"></div>
+  </td>
+  <td scope="row" class="col-3" data-label="GPS Coordinates">
+    {{item.geo.latitude}}, {{item.geo.longitude}}
+  </td>
+  <td data-label="Actions" (click)="downloadItem(item)" scope="row" class="col-3 clickable">
+    <p class="card-text publish-state">
+      Download &nbsp;<i class="material-icons">
+        cloud_download
+      </i>
+    </p>
+  </td>
+</tr>

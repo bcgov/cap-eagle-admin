@@ -3,7 +3,7 @@ import { Injectable } from '@angular/core';
 const encode = encodeURIComponent;
 window['encodeURIComponent'] = (component: string) => {
   return encode(component).replace(/[!'()*]/g, (c) => {
-  // Also encode !, ', (, ), and *
+    // Also encode !, ', (, ), and *
     return '%' + c.charCodeAt(0).toString(16);
   });
 };
@@ -11,6 +11,22 @@ window['encodeURIComponent'] = (component: string) => {
 @Injectable()
 export class Utils {
   constructor() { }
+
+  public formatDate(date) {
+    if (date) {
+      let d = new Date(date),
+        month = '' + (d.getMonth() + 1),
+        day = '' + d.getDate(),
+        year = d.getFullYear();
+
+      if (month.length < 2) { month = '0' + month; }
+      if (day.length < 2) { day = '0' + day; }
+
+      return [year, month, day].join('');
+    } else {
+      return null;
+    }
+  }
 
   public convertJSDateToNGBDate(jSDate: Date) {
     return {
@@ -58,10 +74,21 @@ export class Utils {
   public encodeFilename(filename: string, isUrl: boolean) {
     let safeName;
     if (isUrl) {
-        return safeName = encode(filename).replace(/\(/g, '%28').replace(/\)/g, '%29').replace(/\\/g, '_').replace(/\//g, '_').replace(/\%2F/g, '_').replace(/ /g, '_');
+      return safeName = encode(filename).replace(/\(/g, '%28').replace(/\)/g, '%29').replace(/\\/g, '_').replace(/\//g, '_').replace(/\%2F/g, '_').replace(/ /g, '_');
     } else {
-        return safeName = filename.replace(/\(/g, '%28').replace(/\)/g, '%29').replace(/\\/g, '_').replace(/\//g, '_');
+      return safeName = filename.replace(/\(/g, '%28').replace(/\)/g, '%29').replace(/\\/g, '_').replace(/\//g, '_');
     }
 
+  }
+
+  public getFormattedTime(date) {
+    let y = date.getFullYear();
+    // JavaScript months are 0-based.
+    let m = date.getMonth() + 1;
+    let d = date.getDate();
+    let h = date.getHours();
+    let mi = date.getMinutes();
+    let s = date.getSeconds();
+    return y + '-' + m + '-' + d + '-' + h + '-' + mi + '-' + s;
   }
 }

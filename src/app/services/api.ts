@@ -7,6 +7,7 @@ import 'rxjs/add/observable/throw';
 import { throwError } from 'rxjs';
 import { map } from 'rxjs/operators';
 import * as _ from 'lodash';
+import * as JSZip from 'jszip';
 
 import { KeycloakService } from 'app/services/keycloak.service';
 
@@ -820,11 +821,22 @@ export class ApiService {
     }
   }
 
-  public async exportComments(period: String, format: String) {
+  public async exportComments(period: String, projectName: String, format: String) {
     const queryString = `comment/export/${period}?format=${format}`;
     const blob = await this.http.get<Blob>(this.pathAPI + '/' + queryString, { responseType: 'blob' as 'json' }).toPromise();
-    let filename = 'export.csv';
-    filename = filename.replace(/\\/g, '_').replace(/\//g, '_');
+
+    projectName = projectName.split(' ').join('_');
+    let currentDate = this.utils.formatDate(new Date());
+    let filename = '';
+    if (format === 'staff') {
+      filename = projectName + '-eao-' + currentDate + '.csv';
+    } else if (format === 'proponent') {
+      filename = projectName + '-proponent-' + currentDate + '.csv';
+    } else {
+      filename = 'export.csv';
+    }
+
+    filename = this.utils.encodeFilename(filename, true);
     if (this.isMS) {
       window.navigator.msSaveBlob(blob, filename);
     } else {
@@ -851,8 +863,8 @@ export class ApiService {
     window.open('/api/document/' + document._id + '/fetch/' + filename, '_blank');
   }
 
-  public downloadElementThumbnail(id: string): Promise<Blob> {
-    const queryString = `inspection/element/${id}?thumbnail=true`;
+  public downloadElementThumbnail(inspectionId: string, elementId: string, itemId: string): Promise<Blob> {
+    const queryString = `inspection/${inspectionId}/${elementId}/${itemId}?thumbnail=true`;
     return this.http.get<Blob>(this.pathAPI + '/' + queryString, { responseType: 'blob' as 'json' }).toPromise();
   }
 
@@ -861,10 +873,18 @@ export class ApiService {
     window.open(`/api/inspection/element/${element._id}/${filename}`, '_blank');
   }
 
-  public async downloadElementResource(element: any): Promise<void> {
-    let filename = element.internalURL.substring(element.internalURL.lastIndexOf('/') + 1);
-    const queryString = `inspection/element/${element._id}?filename=${filename}`;
-    let blob = await this.http.get<Blob>(this.pathAPI + '/' + queryString, { responseType: 'blob' as 'json' }).toPromise();
+  public async downloadInspectionItem(inspection, elementId, item: any): Promise<void> {
+    let tempDate = new Date(item.timestamp);
+    let filename = `${inspection.name}_${this.utils.getFormattedTime(tempDate)}`;
+    filename = filename.replace('.', '-');
+    const queryString = `inspection/${inspection._id}/${elementId}/${item._id}?filename=${filename}`;
+    let blob = null;
+    try {
+      blob = await this.http.get<Blob>(this.pathAPI + '/' + queryString, { responseType: 'blob' as 'json' }).toPromise();
+    } catch {
+      alert('An error has occured.');
+      throw Error('Unable to download item');
+    }
     if (this.isMS) {
       window.navigator.msSaveBlob(blob, filename);
     } else {
@@ -874,6 +894,99 @@ export class ApiService {
       a.setAttribute('style', 'display: none');
       a.href = url;
       a.download = filename;
+      a.click();
+      window.URL.revokeObjectURL(url);
+      a.remove();
+    }
+  }
+
+  public async downloadInspection(inspection: any): Promise<void> {
+    // inspectionA
+    // - Element1
+    //   - element.txt
+    //   - photo.jpg
+    //   - photo.jpg
+    //   - photo.video.... etc
+    // - Element2
+    //   - element.txt
+    //   -voice.rec
+    // - Element3
+
+    let zip = new JSZip();
+    zip.file(
+      `inspection.txt`,
+      `
+      Name: ${inspection.name}\n
+      Inspection Number: ${inspection.case}\n
+      Inspector email: ${inspection.email}\n
+      Start Date: ${inspection.startDate}\n
+      End Date: ${inspection.endDate}\n
+      Project: ${inspection.project.name}\n
+      `
+    );
+
+    for (let i = 0; i < inspection.elements.length; i++) {
+      let element = inspection.elements[i];
+      let elementFolder = zip.folder(element.title);
+      elementFolder.file(
+        `element.txt`,
+        `
+        Description: ${element.description}\n
+        Requirement: ${element.requirement}\n
+        Timestamp: ${element.timestamp}\n
+        `
+      );
+
+      for (let j = 0; j < element.items.length; j++) {
+        const itemQueryString = `search?dataset=Item&_id=${element.items[j]}&_schemaName=${'InspectionItem'}`;
+        let itemSearchResults = null;
+        try {
+          itemSearchResults = await this.http.get<any[]>(`${this.pathAPI}/${itemQueryString}`, {}).toPromise();
+          console.log('SEARCH RES', itemSearchResults);
+        } catch {
+          alert('An error has occured.');
+          throw Error('Unable to find inspection item.');
+        }
+
+        let item = itemSearchResults[0];
+        let tempDate = new Date(item.timestamp);
+        let filename = `${inspection.name}_${this.utils.getFormattedTime(tempDate)}.${item.internalExt}`;
+        const queryString = `inspection/${inspection._id}/${element._id}/${item._id}?filename=${filename}`;
+        let blob = null;
+        try {
+          blob = await this.http.get<Blob>(this.pathAPI + '/' + queryString, { responseType: 'blob' as 'json' }).toPromise();
+        } catch {
+          alert('An error has occured.');
+          throw Error('Unable to get asset.');
+        }
+
+        elementFolder.file(
+          `${filename}_caption.txt`,
+          `
+          ${item.caption}
+          `
+        );
+        elementFolder.file(filename, blob, { base64: true });
+      }
+    }
+    let content = null;
+
+    try {
+      content = await zip.generateAsync({ type: 'blob' });
+    } catch {
+      alert('An error has occured.');
+      throw Error('Unable to generate zip file.');
+
+    }
+    if (this.isMS) {
+      window.navigator.msSaveBlob(content, 'example.zip');
+    } else {
+      const url = window.URL.createObjectURL(content);
+      const a = window.document.createElement('a');
+      window.document.body.appendChild(a);
+      a.setAttribute('style', 'display: none');
+      a.href = url;
+      a.download = 'example.zip';
       a.click();
       window.URL.revokeObjectURL(url);
       a.remove();
@@ -1026,6 +1139,17 @@ export class ApiService {
   addUser(user: User): Observable<User> {
     const queryString = `user/`;
     return this.http.post<User>(`${this.pathAPI}/${queryString}`, user, {});
+  }
+
+  // Organizations
+
+  getOrgsByCompanyType(type: string): Observable<Org[]> {
+    const fields = [
+      'name'
+    ];
+
+    const queryString = `organization?companyType=${type}&sortBy=+name&fields=${this.buildValues(fields)}`;
+    return this.http.get<Org[]>(`${this.pathAPI}/${queryString}`, {});
   }
 
   getOrgs(): Observable<Org[]> {

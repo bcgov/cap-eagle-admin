@@ -44,7 +44,7 @@
         <div class="label-pair add-row">
           <label for="proponent">Proponent*</label>
           <div *ngIf="proponentName === '' || proponentName == null">
-            <button class="btn btn-primary" type="button" (click)="linkOrganization()">Link Organization</button>
+            <button class="btn btn-primary" id="orgLink" type="button" (click)="linkOrganization()">Link Organization</button>
           </div>
           <div *ngIf="proponentName !== '' && proponentName">
             <span class="cell icon">
@@ -167,6 +167,7 @@
           <div class="label-pair">
             <label for="eaStatus">EA Readiness Determination </label>
             <select name="eaStatus" id="eaStatus" formControlName="eaStatus" class="form-control">
+              <option [ngValue]="null"> No Determination </option>
               <option [selected]="isEACSelected('Does not require EAC')" value='Does not require EAC'>Does not require
                 EAC</option>
               <option [selected]="isEACSelected('Requires EAC')" value='Requires EAC'>Requires EAC</option>
