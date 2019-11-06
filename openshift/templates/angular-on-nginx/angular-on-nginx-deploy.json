@@ -6,7 +6,7 @@
       "description": "Deployment template for a angular on nginx",
       "tags": "angular,nginx"
     },
-    "name": "eagle-admin"
+    "name": "cap-eagle-admin"
   },
   "objects": [
     {
@@ -194,14 +194,14 @@
       "displayName": "Name",
       "name": "NAME",
       "required": true,
-      "value": "eagle-admin"
+      "value": "cap-eagle-admin"
     },
     {
       "description": "The namespace where to get the above image name",
       "displayName": "Image Namespace",
       "name": "IMAGE_NAMESPACE",
       "required": true,
-      "value": "esm"
+      "value": "oabrei-tools"
     },
     {
       "description": "OpenShift cluster private IP range in CIDR notation, used by Nginx ngx_http_realip_module.",
@@ -225,7 +225,7 @@
       "description": "The exposed hostname that will route to the service, e.g., myappname.pathfinder.gov.bc.ca, if left blank a value will be defaulted.",
       "displayName": "Application Hostname",
       "name": "APPLICATION_DOMAIN",
-      "value": "eagle-dev.pathfinder.gov.bc.ca"
+      "value": "cap-eagle-dev.pathfinder.gov.bc.ca/admin/"
     },
     {
       "description": "The TAG name for this environment, e.g., dev, test, prod",
