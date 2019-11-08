@@ -172,6 +172,7 @@
       },
       "spec": {
         "host": "${APPLICATION_DOMAIN}",
+        "path": "/admin/",
         "port": {
           "targetPort": "8080-tcp"
         },
