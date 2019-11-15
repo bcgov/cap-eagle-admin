@@ -2,7 +2,7 @@
   "kind": "Template",
   "apiVersion": "v1",
   "metadata": {
-    "name": "cap-eagle-admin-nginx-runtime",
+    "name": "${NAME}",
     "creationTimestamp": null
   },
   "objects": [
@@ -41,6 +41,14 @@
             "name": "${NAME}:latest"
           }
         },
+        "triggers": [
+          {
+            "type": "ImageChange"
+          },
+          {
+            "type": "ConfigChange"
+          }
+        ],
         "resources": {},
         "postCommit": {}
       },

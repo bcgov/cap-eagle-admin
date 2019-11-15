@@ -2,7 +2,7 @@
   "kind": "Template",
   "apiVersion": "v1",
   "metadata": {
-    "name": "cap-eagle-admin-builder",
+    "name": "${NAME}",
     "creationTimestamp": null
   },
   "objects": [
@@ -48,6 +48,14 @@
             "name": "${NAME}:latest"
           }
         },
+        "triggers": [
+          {
+            "type": "ImageChange"
+          },
+          {
+            "type": "ConfigChange"
+          }
+        ],
         "resources": {
           "requests": {
             "cpu": "100m",
