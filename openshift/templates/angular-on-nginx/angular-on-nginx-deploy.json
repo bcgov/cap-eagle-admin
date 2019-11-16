@@ -83,28 +83,24 @@
                   }
                 },
                 "livenessProbe": {
-                  "httpGet": {
-                    "path": "/",
-                    "port": 8080,
-                    "scheme": "HTTP"
-                  },
+                  "failureThreshold": 3,
                   "initialDelaySeconds": 30,
-                  "timeoutSeconds": 60,
                   "periodSeconds": 10,
                   "successThreshold": 1,
-                  "failureThreshold": 3
+                  "tcpSocket": {
+                      "port": 8080
+                  },
+                  "timeoutSeconds": 60
                 },
                 "readinessProbe": {
-                  "httpGet": {
-                    "path": "/",
-                    "port": 8080,
-                    "scheme": "HTTP"
-                  },
+                  "failureThreshold": 3,
                   "initialDelaySeconds": 10,
-                  "timeoutSeconds": 60,
                   "periodSeconds": 10,
                   "successThreshold": 1,
-                  "failureThreshold": 3
+                  "tcpSocket": {
+                      "port": 8080
+                  },
+                  "timeoutSeconds": 60
                 }
               }
             ],
@@ -197,21 +193,21 @@
       "displayName": "Name",
       "description": "The name assigned to all of the openshift objects defined in this template. It is also the name of runtime image you want.",
       "required": true,
-      "value": "cap-eagle-admin"
+      "value": "eagle-admin"
     },
     {
       "name": "GROUP_NAME",
       "displayName": "Group Name",
       "description": "The name to group all of the frontend objects defined in this template.",
       "required": true,
-      "value": "cap-eagle-api"
+      "value": "eagle-api"
     },
     {
       "name": "IMAGE_NAMESPACE",
       "displayName": "Image Namespace",
       "description": "The namespace where to get the above image name. Eg: esm",
       "required": true,
-      "value": "oabrei-tools"
+      "value": "your-tools-namespace"
     },
     {
       "name": "REAL_IP_FROM",
@@ -235,7 +231,7 @@
       "name": "APPLICATION_DOMAIN",
       "displayName": "Application Hostname",
       "description": "The exposed hostname that will route to the service.  Recall that both admin and public share the same domain, just use different paths (public uses '/' and admin uses '/admin/'.",
-      "value": "cap-eagle-your-openshift-namespace.pathfinder.gov.bc.ca"
+      "value": "eagle-your-openshift-namespace.pathfinder.gov.bc.ca"
     },
     {
       "name": "TAG_NAME",
