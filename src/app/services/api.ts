@@ -25,6 +25,7 @@ import { RecentActivity } from 'app/models/recentActivity';
 import { ValuedComponent } from 'app/models/valuedComponent';
 import { CommentPeriodSummary } from 'app/models/commentPeriodSummary';
 import { Utils } from 'app/shared/utils/utils';
+import { NotificationProject } from 'app/models/notificationProject';
 
 interface LocalLoginResponse {
   _id: string;
@@ -42,9 +43,9 @@ export class ApiService {
   public token: string;
   public isMS: boolean; // IE, Edge, etc
   // private jwtHelper: JwtHelperService;
-  pathAPI: string;
-  params: Params;
-  env: 'local' | 'dev' | 'test' | 'demo' | 'scale' | 'beta' | 'master' | 'prod';
+  public pathAPI: string;
+  public params: Params;
+  public env: string;  // Could be anything per Openshift settings but generally is one of 'local' | 'dev' | 'test' | 'prod' | 'demo'
 
   constructor(
     private http: HttpClient,
@@ -56,41 +57,14 @@ export class ApiService {
     this.token = currentUser && currentUser.token;
     this.isMS = window.navigator.msSaveOrOpenBlob ? true : false;
 
-    const { hostname } = window.location;
-    switch (hostname) {
-      case 'localhost':
-        // Local
-        this.pathAPI = 'http://localhost:3000/api';
-        this.env = 'local';
-        break;
+    // The following items are loaded by a file that is only present on cluster builds.
+    // Locally, this will be empty and local defaults will be used.
+    const remote_api_path = window.localStorage.getItem('from_admin_server--remote_api_path');
+    const remote_public_path = window.localStorage.getItem('from_admin_server--remote_public_path');  // available in case its ever needed
+    const deployment_env = window.localStorage.getItem('from_admin_server--deployment_env');
 
-      case 'eagle-dev.pathfinder.gov.bc.ca':
-        // Prod
-        this.pathAPI = 'https://eagle-dev.pathfinder.gov.bc.ca/api';
-        this.env = 'dev';
-        break;
-
-      case 'test.projects.eao.gov.bc.ca':
-      case 'eagle-test.pathfinder.gov.bc.ca':
-      case 'esm-test.pathfinder.gov.bc.ca':
-        // Test
-        this.pathAPI = 'https://eagle-test.pathfinder.gov.bc.ca/api';
-        this.env = 'test';
-        break;
-
-      case 'www.projects.eao.gov.bc.ca':
-      case 'eagle-prod.pathfinder.gov.bc.ca':
-      case 'projects.eao.gov.bc.ca':
-        // Test
-        this.pathAPI = 'https://eagle-prod.pathfinder.gov.bc.ca/api';
-        this.env = 'prod';
-        break;
-
-      default:
-        // test
-        this.pathAPI = 'https://eagle-test.pathfinder.gov.bc.ca/api';
-        this.env = 'test';
-    }
+    this.pathAPI = (_.isEmpty(remote_api_path)) ? 'http://localhost:3000/api/public' : remote_api_path;
+    this.env = (_.isEmpty(deployment_env)) ? 'local' : deployment_env;
   }
 
   handleError(error: any): Observable<never> {
@@ -218,6 +192,10 @@ export class ApiService {
       'projLead',
       'execProjectDirector',
       'complianceLead',
+      'review180Start',
+      'review45Start',
+      'reviewSuspensions',
+      'reviewExtensions',
       'pins',
       'read',
       'write',
@@ -259,6 +237,24 @@ export class ApiService {
   deleteProject(proj: Project): Observable<Project> {
     const queryString = `project/${proj._id}`;
     return this.http.delete<Project>(`${this.pathAPI}/${queryString}`, {});
+  }
+
+  addExtension(proj: Project, extension: any): Observable<any> {
+    const queryString = `project/${proj._id}/extension`;
+    return this.http.post<any>(`${this.pathAPI}/${queryString}`, extension, {});
+  }
+
+  editExtension(proj: Project, extension: any): Observable<any> {
+    const queryString = `project/${proj._id}/extension`;
+    return this.http.put<any>(`${this.pathAPI}/${queryString}`, extension, {});
+  }
+
+  deleteExtension(proj: Project, extension: any): Observable<any> {
+    let queryString = `project/${proj._id}/extension`;
+    // We need this because DELETE in angular doesn't allow body, even though RFC 7231
+    // explicitly permits it.
+    queryString += '?item=' + encodeURIComponent(JSON.stringify(extension));
+    return this.http.delete<any>(`${this.pathAPI}/${queryString}`, {});
   }
 
   addPinsToProject(proj: Project, pins: any): Observable<Project> {
@@ -782,7 +778,7 @@ export class ApiService {
     return this.http.put<Document>(`${this.pathAPI}/${queryString}`, {}, {});
   }
 
-  uploadDocument(formData: FormData): Observable<Document> {
+  uploadDocument(formData: FormData, publish: Boolean): Observable<Document> {
     const fields = [
       'documentFileName',
       'internalOriginalName',
@@ -790,7 +786,8 @@ export class ApiService {
       'internalURL',
       'internalMime'
     ];
-    const queryString = `document?fields=${this.buildValues(fields)}`;
+    let queryString = `document?fields=${this.buildValues(fields)}`;
+    if (publish) { queryString += `&publish=${publish}`; }
     return this.http.post<Document>(`${this.pathAPI}/${queryString}`, formData, {});
   }
 
@@ -1179,6 +1176,23 @@ export class ApiService {
     const queryString = `organization/`;
     return this.http.post<Org>(`${this.pathAPI}/${queryString}`, org, {});
   }
+
+  //
+  // Notification Projects
+  //
+  saveNotificationProject(notificationProject: NotificationProject, publish: boolean): Observable<NotificationProject> {
+    let queryString = `notificationProject/${notificationProject._id}`;
+    if (publish !== null) {
+      queryString += `?publish=${publish}`;
+    }
+    return this.http.put<NotificationProject>(`${this.pathAPI}/${queryString}`, notificationProject, {});
+  }
+
+  addNotificationProject(notificationProject: NotificationProject, publish: boolean): Observable<NotificationProject> {
+    const queryString = `notificationProject?publish=${publish}`;
+    return this.http.post<NotificationProject>(`${this.pathAPI}/${queryString}`, notificationProject, {});
+  }
+
 
   //
   // Local helpers

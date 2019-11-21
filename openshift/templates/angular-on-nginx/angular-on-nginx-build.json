@@ -2,7 +2,7 @@
   "kind": "Template",
   "apiVersion": "v1",
   "metadata": {
-    "name": "${NAME}",
+    "name": "eagle-admin",
     "creationTimestamp": null
   },
   "objects": [

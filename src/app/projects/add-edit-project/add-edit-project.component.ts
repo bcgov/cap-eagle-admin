@@ -12,6 +12,13 @@ import { ProjectService } from 'app/services/project.service';
 import { Project } from 'app/models/project';
 import { NavigationStackUtils } from 'app/shared/utils/navigation-stack-utils';
 import { ContactSelectTableRowsComponent } from 'app/shared/components/contact-select-table-rows/contact-select-table-rows.component';
+import { Constants } from 'app/shared/utils/constants';
+
+import { TableObject } from 'app/shared/components/table-template/table-object';
+import { TableParamsObject } from 'app/shared/components/table-template/table-params-object';
+import { TableTemplateUtils } from 'app/shared/utils/table-template-utils';
+import { ModificationsListTableRowsComponent } from './modifications-list-table-rows/modifications-list-table-rows.component';
+import { connectableObservableDescriptor } from 'rxjs/internal/observable/ConnectableObservable';
 
 @Component({
   selector: 'app-add-edit-project',
@@ -27,108 +34,40 @@ export class AddEditProjectComponent implements OnInit, OnDestroy {
   public sectorsSelected = [];
   public proponentName = '';
   public proponentId = '';
-
-  public PROJECT_SUBTYPES: Object = {
-    'Mines': [
-      'Coal Mines',
-      'Construction Stone and Industrial Mineral Quarries',
-      'Mineral Mines',
-      'Off-shore Mines',
-      'Placer Mineral Mines',
-      'Sand and Gravel Pits'
-    ],
-    'Energy-Electricity': [
-      'Electric Transmission Lines',
-      'Power Plants'
-    ],
-    'Energy-Petroleum & Natural Gas': [
-      'Energy Storage Facilities',
-      'Natural Gas Processing Plants',
-      'Off-shore Oil or Gas Facilities',
-      'Transmission Pipelines'
-    ],
-    'Transportation': [
-      'Airports',
-      'Ferry Terminals',
-      'Marine Port Facilities',
-      'Public Highways',
-      'Railways'
-    ],
-    'Water Management': [
-      'Dams',
-      'Dykes',
-      'Groundwater Extraction',
-      'Shoreline Modification',
-      'Water Diversion'
-    ],
-    'Industrial': [
-      'Forest Products Industries',
-      'Non-metallic Mineral Products Industries',
-      'Organic and Inorganic Chemical Industry',
-      'Other Industries',
-      'Primary Metals Industry'
-    ],
-    'Waste Disposal': [
-      'Hazardous Waste Facilities',
-      'Local Government Liquid Waste Management Facilities',
-      'Local Government Solid Waste Management Facilities'
-    ],
-    'Food Processing': [
-      'Fish Products Industry',
-      'Meat and Meat Products Industry',
-      'Poultry Products Industry'
-    ],
-    'Tourist Destination Resorts': [
-      'Golf Resorts',
-      'Marina Resorts',
-      'Resort Developments',
-      'Ski Resorts'
-    ],
-    'Other': [
-      'Other'
-    ]
-  };
-
-  public PROJECT_TYPES: Array<Object> = [
-    'Energy-Electricity',
-    'Energy-Petroleum & Natural Gas',
-    'Food Processing',
-    'Industrial',
-    'Mines',
-    'Other',
-    'Tourist Destination Resorts',
-    'Transportation',
-    'Waste Disposal',
-    'Water Management'
+  public modifications = [];
+  public modificationsTableData: TableObject;
+  public modificationsTableColumns: any[] = [
+    {
+      name: 'Type',
+      value: 'type',
+      width: 'col-2',
+      nosort: true
+    },
+    {
+      name: 'Applied To',
+      value: 'appliedTo',
+      width: 'col-4',
+      nosort: true
+    },
+    {
+      name: 'Start',
+      value: 'start',
+      width: 'col-3',
+      nosort: true
+    },
+    {
+      name: 'End',
+      value: 'end',
+      width: 'col-3',
+      nosort: true
+    }
   ];
 
-  public PROJECT_STATUS: Array<Object> = [
-    'Initiated',
-    'Submitted',
-    'In Progress', // default, set in BuildForm() and BuildFormFromData()
-    'Certified',
-    'Not Certified',
-    'Decommissioned'
-  ];
-
-  public PROJECT_NATURE: Array<Object> = [
-    'New Construction',
-    'Modification of Existing',
-    'Dismantling or Abandonment'
-  ];
-
-  public EAC_DECISIONS: Array<Object> = [
-    'In Progress', // default, set in BuildForm() and BuildFormFromData()
-    'Certificate Issued',
-    'Certificate Refused',
-    'Further Assessment Required',
-    'Certificate Not Required',
-    'Certificate Expired',
-    'Withdrawn',
-    'Terminated',
-    'Pre-EA Act Approval',
-    'Not Designated Reviewable'
-  ];
+  public PROJECT_SUBTYPES: Object = Constants.PROJECT_SUBTYPES;
+  public PROJECT_TYPES: Array<Object> = Constants.PROJECT_TYPES;
+  public PROJECT_STATUS: Array<Object> = Constants.PROJECT_STATUS;
+  public PROJECT_NATURE: Array<Object> = Constants.PROJECT_NATURE;
+  public EAC_DECISIONS: Array<Object> = Constants.EAC_DECISIONS;
 
   public projectName;
   public projectId;
@@ -153,13 +92,10 @@ export class AddEditProjectComponent implements OnInit, OnDestroy {
 
   ngOnInit() {
     // This is to get Region information from List (db) and put into a list(regions)
-    this.config.lists.map(item => {
-      switch (item.type) {
-        case 'region':
-          this.regions.push(item.name);
-          break;
-      }
-    });
+    this.config.getRegions()
+      .subscribe(regions => {
+        this.regions = regions;
+      });
 
     // Get data related to current project
     this.route.parent.data
@@ -253,8 +189,52 @@ export class AddEditProjectComponent implements OnInit, OnDestroy {
         'responsibleEPD': new FormControl(),
         'projectLeadId': new FormControl(),
         'projectLead': new FormControl(),
+        'review180Start': new FormControl(),
+        'review45Start': new FormControl()
       });
     }
+    if (this.project.reviewExtensions) {
+      this.project.reviewExtensions.forEach( item => {
+        this.modifications.push(item);
+      });
+    }
+    if (this.project.reviewSuspensions) {
+      this.project.reviewSuspensions.forEach( item => {
+        this.modifications.push(item);
+      });
+    }
+    this.modificationsTableData = new TableObject(
+      ModificationsListTableRowsComponent,
+      this.modifications,
+      []
+    );
+
+  }
+
+  public addExtension() {
+    this.storageService.state.form = this.myForm;
+    this.storageService.state.extensionType = 'add-extension';
+    this.setNavigation();
+    this.router.navigate(['/p', this.project._id, 'edit', 'add-extension']);
+  }
+
+  public addSuspension() {
+    this.storageService.state.extensionType = 'add-suspension';
+    this.storageService.state.form = this.myForm;
+    this.setNavigation();
+    this.router.navigate(['/p', this.project._id, 'edit', 'add-suspension']);
+  }
+
+  public onItemClicked(item) {
+    if (item.type === 'Extension') {
+      this.storageService.state.extensionType = 'edit-extension';
+    } else {
+      this.storageService.state.extensionType = 'edit-suspension';
+    }
+    this.storageService.state.extension = item;
+    this.storageService.state.form = this.myForm;
+    this.setNavigation();
+    this.router.navigate(['/p', this.project._id, 'edit', this.storageService.state.extensionType]);
   }
 
   private setNavigation() {
@@ -366,6 +346,8 @@ export class AddEditProjectComponent implements OnInit, OnDestroy {
       'responsibleEPD': new FormControl(formData.responsibleEPDObj.displayName),
       'projectLeadId': new FormControl(formData.projectLeadObj._id),
       'projectLead': new FormControl(formData.projectLeadObj.displayName),
+      'review180Start': new FormControl(this.utils.convertJSDateToNGBDate(new Date(formData.review180Start))),
+      'review45Start': new FormControl(this.utils.convertJSDateToNGBDate(new Date(formData.review45Start)))
     });
     this.sectorsSelected = this.PROJECT_SUBTYPES[formData.type];
     return theForm;
@@ -401,7 +383,7 @@ export class AddEditProjectComponent implements OnInit, OnDestroy {
     }
   }
 
-  private getDecisionDate(value) {
+  private getDate(value) {
     // nb: isNaN(undefined) returns true, while isNaN(null) returns false
     let date = value === null ? undefined : value.day;
     return isNaN(date) ? null : new Date(moment(this.utils.convertFormGroupNGBDateToJSDate(value))).toISOString();
@@ -427,17 +409,21 @@ export class AddEditProjectComponent implements OnInit, OnDestroy {
       'status': form.controls.status.value,
       // 'projectStatusDate': form.get('projectStatusDate').value ? new Date(moment(this.utils.convertFormGroupNGBDateToJSDate(form.get('projectStatusDate').value))).toISOString() : null,
       'eacDecision': form.controls.eacDecision.value,
-      'decisionDate': this.getDecisionDate(form.get('decisionDate').value),
+      'decisionDate': this.getDate(form.get('decisionDate').value),
       'substantially': form.controls.substantially.value === 'yes' ? true : false,
       // 'substantiallyDate': form.get('substantiallyDate').value ? new Date(moment(this.utils.convertFormGroupNGBDateToJSDate(form.get('substantiallyDate').value))).toISOString() : null,
       'activeStatus': form.controls.activeStatus.value,
       // 'activeDate': form.get('activeDate').value ? new Date(moment(this.utils.convertFormGroupNGBDateToJSDate(form.get('activeDate').value))).toISOString() : null,
       'responsibleEPDId': form.controls.responsibleEPDId.value,
       'projectLeadId': form.controls.projectLeadId.value,
+      'review180Start': this.getDate(form.get('review180Start').value),
+      'review45Start': this.getDate(form.get('review45Start').value)
     };
   }
 
   private clearStorageService() {
+    this.storageService.state.extension = null;
+    this.storageService.state.extensionType = null;
     this.storageService.state.form = null;
     this.storageService.state.selectedOrganization = null;
     this.navigationStackUtils.popNavigationStack();
@@ -489,10 +475,10 @@ export class AddEditProjectComponent implements OnInit, OnDestroy {
       return false;
     } else if (this.myForm.controls.lon.value >= -114.01 || this.myForm.controls.lon.value <= -139.06) {
       alert('Longitude must be between -114.01 and -139.06');
-      return;
+      return false;
     } else if (this.myForm.controls.responsibleEPDId.value == null || this.myForm.controls.responsibleEPDId.value === '') {
       alert('You must select an EPD');
-      return;
+      return false;
     } else if (this.myForm.controls.projectLeadId.value == null || this.myForm.controls.projectLeadId.value === '') {
       alert('You must select a project lead');
       return;
