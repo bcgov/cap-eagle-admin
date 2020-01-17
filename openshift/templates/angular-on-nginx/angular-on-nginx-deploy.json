@@ -243,7 +243,7 @@
       "name": "APPLICATION_DOMAIN",
       "displayName": "Application Hostname",
       "description": "The exposed hostname that will route to the service.  Recall that both admin and public share the same domain, just use different paths (public uses '/' and admin uses '/admin/'.",
-      "value": "cap-clement-ibm-api-oabrei-dev.clouddiscovery-01dea2606d71f7a3540418b505a890bc-0002.mon01.containers.appdomain.cloud"
+      "value": "eagle-your-openshift-namespace.pathfinder.gov.bc.ca"
     },
     {
       "name": "TAG_NAME",
@@ -255,13 +255,13 @@
       "name": "REMOTE_API_PATH",
       "displayName": "URL path to API",
       "description": "The 'https://' prefixed URL path to the API the public Angular app will make calls to.",
-      "value": "https://cap-clement-ibm-api-oabrei-dev.clouddiscovery-01dea2606d71f7a3540418b505a890bc-0002.mon01.containers.appdomain.cloud/api"
+      "value": "https://eagle-your-openshift-namespace.pathfinder.gov.bc.ca/api"
     },
     {
       "name": "REMOTE_PUBLIC_PATH",
       "displayName": "URL path to Public",
       "description": "[Currently Unused] The 'https://' prefixed URL path to the Public app that the admin Angular app will link back to.",
-      "value": "https://cap-clement-ibm-api-oabrei-dev.clouddiscovery-01dea2606d71f7a3540418b505a890bc-0002.mon01.containers.appdomain.cloud/"
+      "value": "https://eagle-your-openshift-namespace.pathfinder.gov.bc.ca/"
     }
   ]
 }
